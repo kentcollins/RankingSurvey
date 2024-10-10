@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Preferences Ranking Survey</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+        }
+        .container {
+            display: flex;
+            justify-content: space-between;
+            width: 90%;
+            max-width: 1200px;
+            margin: 20px auto;
+            padding: 10px;
+            border: 1px solid #ccc;
+        }
+        .section {
+            width: 48%;
+            min-height: 300px;
+            padding: 10px;
+            margin-bottom: 10px;
+            overflow-y: auto;
+        }
+        #ranked {
+            background-color: #e6f3ff;
+            border: 2px solid #4a90e2;
+        }
+        #unranked {
+            background-color: #f0f0f0;
+            border: 2px solid #999;
+        }
+        .item-container {
+            display: flex;
+            align-items: center;
+            margin: 5px 0;
+        }
+        .rank-number {
+            width: 20px;
+            text-align: right;
+            margin-right: 5px;
+            font-weight: bold;
+            color: #4a90e2;
+        }
+        .item {
+            flex-grow: 1;
+            padding: 10px;
+            background-color: white;
+            border: 1px solid #ddd;
+            cursor: move;
+            position: relative;
+        }
+        .item.dragging {
+            opacity: 0.5;
+        }
+        .item-label {
+            display: block;
+        }
+        h2 {
+            margin-top: 0;
+            font-size: 16px;
+            color: #333;
+        }
+        #submitPlaceholder {
+            text-align: center;
+            padding: 10px;
+            background-color: #f0f0f0;
+            border: 1px solid #ddd;
+            margin-top: 10px;
+        }
+        #submitButton {
+            display: none;
+            width: 100%;
+            padding: 10px;
+            background-color: #4a90e2;
+            color: white;
+            border: none;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        #submitButton:hover {
+            background-color: #357ae8;
+        }
+    </style>
+</head>
+<body>
+    <form id="rankingForm" method="post" target="_self">
+        <div class="container">
+            <div id="unranked" class="section">
+                <h2>Unranked Options</h2>
+            </div>
+            <div id="ranked" class="section">
+                <h2>Ranked Options (<span id="rankedCount">0</span>/<span id="requiredCount"></span>)</h2>
+                <div id="submitPlaceholder">Rank <span id="remainingCount"></span> more options to enable submission</div>
+                <button type="submit" id="submitButton">Submit Ranking</button>
+            </div>
+        </div>
+        <input type="hidden" id="rankedItemsInput">
+    </form>
+
+    <script src="ranking-survey-config.js"></script>
+    <script>
+        const rankedSection = document.getElementById('ranked');
+        const unrankedSection = document.getElementById('unranked');
+        const rankedCountSpan = document.getElementById('rankedCount');
+        const requiredCountSpan = document.getElementById('requiredCount');
+        const submitButton = document.getElementById('submitButton');
+        const submitPlaceholder = document.getElementById('submitPlaceholder');
+        let draggingElement = null;
+
+        requiredCountSpan.textContent = REQUIRED_RANKED_ITEMS;
+
+        function createDraggableItem(index) {
+            const itemContainer = document.createElement('div');
+            itemContainer.className = 'item-container';
+
+            const rankNumber = document.createElement('div');
+            rankNumber.className = 'rank-number';
+
+            const item = document.createElement('div');
+            item.className = 'item';
+            item.draggable = true;
+
+            const labelSpan = document.createElement('span');
+            labelSpan.className = 'item-label';
+            labelSpan.textContent = options[index] || `Option ${index + 1}`;
+
+            item.appendChild(labelSpan);
+            itemContainer.appendChild(rankNumber);
+            itemContainer.appendChild(item);
+
+            item.addEventListener('dragstart', () => {
+                draggingElement = itemContainer;
+                setTimeout(() => itemContainer.classList.add('dragging'), 0);
+            });
+
+            item.addEventListener('dragend', () => {
+                draggingElement = null;
+                itemContainer.classList.remove('dragging');
+                updateRankNumbers();
+            });
+
+            return itemContainer;
+        }
+
+        function initializeItems() {
+            while (unrankedSection.children.length > 1) {
+                unrankedSection.removeChild(unrankedSection.lastChild);
+            }
+
+            for (let i = 0; i < options.length; i++) {
+                const item = createDraggableItem(i);
+                unrankedSection.appendChild(item);
+            }
+
+            updateRankedCount();
+        }
+
+        function updateRankedCount() {
+            const count = rankedSection.querySelectorAll('.item-container').length;
+            rankedCountSpan.textContent = count;
+            updateSubmitButton();
+        }
+
+        function updateRankNumbers() {
+            const rankedItems = rankedSection.querySelectorAll('.item-container');
+            rankedItems.forEach((item, index) => {
+                const rankNumber = item.querySelector('.rank-number');
+                rankNumber.textContent = index + 1;
+            });
+
+            const unrankedItems = unrankedSection.querySelectorAll('.item-container');
+            unrankedItems.forEach(item => {
+                const rankNumber = item.querySelector('.rank-number');
+                rankNumber.textContent = '';
+            });
+        }
+
+        function updateSubmitButton() {
+            const rankedItemsCount = rankedSection.querySelectorAll('.item-container').length;
+            const remainingCount = REQUIRED_RANKED_ITEMS - rankedItemsCount;
+            
+            if (rankedItemsCount === REQUIRED_RANKED_ITEMS) {
+                submitPlaceholder.style.display = 'none';
+                submitButton.style.display = 'block';
+            } else {
+                submitPlaceholder.style.display = 'block';
+                submitButton.style.display = 'none';
+                document.getElementById('remainingCount').textContent = remainingCount;
+            }
+        }
+
+        function getDragAfterElement(container, y) {
+            const draggableElements = [...container.querySelectorAll('.item-container:not(.dragging)')];
+            
+            return draggableElements.reduce((closest, child) => {
+                const box = child.getBoundingClientRect();
+                const offset = y - box.top - box.height / 2;
+                if (offset < 0 && offset > closest.offset) {
+                    return { offset: offset, element: child };
+                } else {
+                    return closest;
+                }
+            }, { offset: Number.NEGATIVE_INFINITY }).element;
+        }
+
+        function autoScroll(e) {
+            const threshold = 50;
+            const speed = 20;
+            const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+            const windowHeight = window.innerHeight;
+
+            if (e.clientY < threshold) {
+                window.scrollBy(0, -speed);
+            } else if (e.clientY > windowHeight - threshold) {
+                window.scrollBy(0, speed);
+            }
+        }
+
+        let autoScrollInterval;
+
+        [rankedSection, unrankedSection].forEach(section => {
+            section.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                autoScroll(e);
+                const afterElement = getDragAfterElement(section, e.clientY);
+                const currentElement = draggingElement;
+
+
+
+                if (afterElement == null) {
+                    section.appendChild(currentElement);
+                } else {
+                    section.insertBefore(currentElement, afterElement);
+                }
+
+                updateRankedCount();
+                updateRankNumbers();
+            });
+        });
+
+        document.addEventListener('dragstart', () => {
+            autoScrollInterval = setInterval(autoScroll, 50);
+        });
+
+        document.addEventListener('dragend', () => {
+            clearInterval(autoScrollInterval);
+            if (rankedSection.querySelectorAll('.item-container').length > REQUIRED_RANKED_ITEMS) {
+                const lastItem = rankedSection.querySelector('.item-container:last-child');
+                unrankedSection.insertBefore(lastItem, unrankedSection.children[1]);
+                updateRankedCount();
+                updateRankNumbers();
+            }
+        });
+
+        document.addEventListener('DOMContentLoaded', function() {
+            const form = document.getElementById('rankingForm');
+            form.action = `https://docs.google.com/forms/d/e/${FORM_ID}/formResponse`;
+
+            const hiddenInput = document.getElementById('rankedItemsInput');
+            hiddenInput.name = ENTRY_ID;
+        });
+
+        document.getElementById('rankingForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+
+            const rankedItems = Array.from(rankedSection.querySelectorAll('.item-label'))
+                .map(label => label.textContent)
+                .join('; ');
+
+            document.getElementById('rankedItemsInput').value = rankedItems;
+
+            console.log('Submitting form with:', rankedItems);
+
+            this.submit();
+        });
+
+        window.addEventListener('load', initializeItems);
+    </script>
+</body>
+</html>
